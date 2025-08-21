@@ -32,14 +32,14 @@ export function authenticateRequest(request: NextRequest): JWTPayload {
 }
 
 // Middleware wrapper for protected routes
-export function withAuth(handler: (request: AuthenticatedRequest) => Promise<Response>) {
-  return async (request: NextRequest): Promise<Response> => {
+export function withAuth(handler: (request: AuthenticatedRequest, { params }: any) => Promise<Response>) {
+  return async (request: NextRequest, { params }: any): Promise<Response> => {
     try {
       const user = authenticateRequest(request)
       const authenticatedRequest = request as AuthenticatedRequest
       authenticatedRequest.user = user
 
-      return await handler(authenticatedRequest)
+      return await handler(authenticatedRequest, { params })
     } catch (error) {
       return new Response(
         JSON.stringify({

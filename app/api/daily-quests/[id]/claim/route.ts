@@ -9,7 +9,7 @@ export const POST = withAuth(async (request, { params }) => {
   try {
     await connectDB()
 
-    const { id } = params
+    const { id } = await params
 
     const quest = await DailyQuest.findOne({
       _id: id,

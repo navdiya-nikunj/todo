@@ -6,7 +6,7 @@ import User from "@/lib/db/models/User"
 import XPHistory from "@/lib/db/models/XPHistory"
 import { withAuth } from "@/lib/auth/middleware"
 
-export const POST = withAuth(async (request, { params }) => {
+export const POST = withAuth(async (request, { params }: { params: { realmId: string; taskId: string } }) => {
   try {
     await connectDB()
 

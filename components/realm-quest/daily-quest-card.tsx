@@ -6,12 +6,15 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Sword, Map, Star, Flame, Shield, CheckCircle, Clock } from "lucide-react"
+import { EditDailyQuestModal } from "./edit-daily-quest-modal"
 import type { DailyQuest, DailyQuestType, CustomDailyQuest } from "@/lib/types/realm-quest"
 
 interface DailyQuestCardProps {
   quest: DailyQuest | CustomDailyQuest
   onClaim?: (questId: string) => void
   onUpdateProgress?: (questId: string) => void
+  onEditQuest?: (questId: string, questData: any) => void
+  onDeleteQuest?: (questId: string) => void
 }
 
 const questIcons: Record<DailyQuestType, React.ComponentType<any>> = {
@@ -20,14 +23,19 @@ const questIcons: Record<DailyQuestType, React.ComponentType<any>> = {
   earn_xp: Star,
   maintain_streak: Flame,
   defeat_enemies: Shield,
+  custom: Star,
 }
 
-export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestCardProps) {
+export function DailyQuestCard({ quest, onClaim, onUpdateProgress, onEditQuest, onDeleteQuest }: DailyQuestCardProps) {
   const IconComponent = quest.questType === "custom" ? Star : questIcons[quest.questType as DailyQuestType]
   const progressPercentage = (quest.progress / quest.target) * 100
   const isExpired = new Date() > new Date(quest.expiresAt)
   const canClaim = quest.completed && !isExpired
   const isCustomQuest = "isCustom" in quest && quest.isCustom
+
+  if(quest.progress === -1) {
+    return null
+  }
 
   return (
     <Card
@@ -36,8 +44,8 @@ export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestC
       } ${isCustomQuest ? "border-yellow-400/30" : ""}`}
     >
       <div className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+          <div className="flex items-start sm:items-center gap-3 w-full sm:w-auto">
             <div
               className={`p-2 rounded-lg ${
                 quest.completed ? "bg-green-400/20" : isCustomQuest ? "bg-yellow-400/20" : "bg-realm-neon-blue/20"
@@ -49,9 +57,9 @@ export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestC
                 }`}
               />
             </div>
-            <div>
-              <h4 className="font-bold text-realm-silver">{quest.title}</h4>
-              <p className="text-sm text-realm-silver/70">{quest.description}</p>
+            <div className="min-w-0">
+              <h4 className="font-bold text-realm-silver text-base sm:text-lg break-words">{quest.title}</h4>
+              <p className="text-sm text-realm-silver/70 break-words">{quest.description}</p>
               {isCustomQuest && (
                 <Badge variant="outline" className="text-yellow-400 border-yellow-400/30 mt-1">
                   Custom Quest
@@ -64,7 +72,7 @@ export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestC
 
         <div className="space-y-3">
           <div>
-            <div className="flex items-center justify-between text-sm text-realm-silver/70 mb-1">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-sm text-realm-silver/70 mb-1">
               <span>Progress</span>
               <span>
                 {quest.progress} / {quest.target}
@@ -73,20 +81,28 @@ export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestC
             <Progress value={progressPercentage} className="h-2 bg-realm-gunmetal" />
           </div>
 
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <Badge variant="secondary" className="text-yellow-400 bg-yellow-400/10 border-yellow-400/30">
               +{quest.xpReward} XP
             </Badge>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end">
               {isCustomQuest && !quest.completed && (
                 <Button
                   size="sm"
                   onClick={() => onUpdateProgress?.(quest.id)}
-                  className="realm-button text-yellow-400 hover:bg-yellow-400/20"
+                  className="realm-button text-yellow-400 hover:bg-yellow-400/20 whitespace-nowrap"
                 >
                   +1 Progress
                 </Button>
+              )}
+
+              {isCustomQuest && onEditQuest && onDeleteQuest && (
+                <EditDailyQuestModal
+                  quest={quest as CustomDailyQuest}
+                  onEditQuest={onEditQuest}
+                  onDeleteQuest={onDeleteQuest}
+                />
               )}
 
               {isExpired ? (
@@ -98,12 +114,12 @@ export function DailyQuestCard({ quest, onClaim, onUpdateProgress }: DailyQuestC
                 <Button
                   size="sm"
                   onClick={() => onClaim?.(quest.id)}
-                  className="realm-button text-green-400 hover:bg-green-400/20"
+                  className="realm-button text-green-400 hover:bg-green-400/20 whitespace-nowrap"
                 >
                   Claim Reward
                 </Button>
               ) : (
-                <Badge className="text-realm-neon-blue bg-realm-neon-blue/10 border-realm-neon-blue/30">
+                <Badge className="text-realm-neon-blue bg-realm-neon-blue/10 border-realm-neon-blue/30 whitespace-nowrap">
                   In Progress
                 </Badge>
               )}

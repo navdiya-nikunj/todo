@@ -9,21 +9,25 @@ import {
   type UpdateTaskRequest,
 } from "./client"
 import type { User, Realm, Task, Badge } from "@/lib/types/realm-quest"
-
+import Cookies from "js-cookie"
 // Authentication Services
 export const authService = {
-  async login(credentials: LoginRequest): Promise<ApiResponse<{ user: User; token: string }>> {
-    const response = await apiClient.post<ApiResponse<{ user: User; token: string }>>("/auth/login", credentials)
-    if (response.data.token) {
-      apiClient.setToken(response.data.token)
+  async login(credentials: LoginRequest): Promise<ApiResponse<{ user: User; accessToken: string; refreshToken: string }>> {
+    const response = await apiClient.post<ApiResponse<{ user: User; accessToken: string; refreshToken: string }>>("/auth/login", credentials)
+    if (response.data.accessToken) {
+      apiClient.setToken(response.data.accessToken)
+      Cookies.set("token", response.data.accessToken)
+      Cookies.set("refresh_token", response.data.refreshToken)
     }
     return response
   },
 
-  async register(userData: RegisterRequest): Promise<ApiResponse<{ user: User; token: string }>> {
-    const response = await apiClient.post<ApiResponse<{ user: User; token: string }>>("/auth/register", userData)
-    if (response.data.token) {
-      apiClient.setToken(response.data.token)
+  async register(userData: RegisterRequest): Promise<ApiResponse<{ user: User; accessToken: string; refreshToken: string }>> {
+    const response = await apiClient.post<ApiResponse<{ user: User; accessToken: string; refreshToken: string }>>("/auth/register", userData)
+    if (response.data.accessToken) {
+      apiClient.setToken(response.data.accessToken)
+      Cookies.set("token", response.data.accessToken)
+      Cookies.set("refresh_token", response.data.refreshToken)
     }
     return response
   },
@@ -31,16 +35,21 @@ export const authService = {
   async logout(): Promise<void> {
     await apiClient.post("/auth/logout")
     apiClient.clearToken()
+    Cookies.remove("token")
+    Cookies.remove("refresh_token")
   },
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
     return apiClient.get<ApiResponse<User>>("/auth/me")
   },
 
-  async refreshToken(): Promise<ApiResponse<{ token: string }>> {
-    const response = await apiClient.post<ApiResponse<{ token: string }>>("/auth/refresh")
-    if (response.data.token) {
-      apiClient.setToken(response.data.token)
+  async refreshToken(): Promise<ApiResponse<{ accessToken: string; refreshToken: string }>> {
+    const refreshToken = Cookies.get("refresh_token")
+    const response = await apiClient.post<ApiResponse<{ accessToken: string; refreshToken: string }>>("/auth/refresh", { refreshToken })
+    if (response.data.accessToken) {
+      apiClient.setToken(response.data.accessToken)
+      Cookies.set("token", response.data.accessToken)
+      Cookies.set("refresh_token", response.data.refreshToken)
     }
     return response
   },
@@ -72,8 +81,8 @@ export const userService = {
 
 // Realm Services
 export const realmService = {
-  async getRealms(page = 1, limit = 10): Promise<PaginatedResponse<Realm>> {
-    return apiClient.get<PaginatedResponse<Realm>>(`/realms?page=${page}&limit=${limit}`)
+  async getRealms(page = 1, limit = 10): Promise<ApiResponse<Realm[]>> {
+    return apiClient.get<ApiResponse<Realm[]>>(`/realms?page=${page}&limit=${limit}`)
   },
 
   async getRealmById(id: string): Promise<ApiResponse<Realm>> {
@@ -109,20 +118,20 @@ export const taskService = {
   async getTasks(
     realmId: string,
     filters?: {
-      completed?: boolean
+      status?: string
       difficulty?: string
       page?: number
       limit?: number
     },
-  ): Promise<PaginatedResponse<Task>> {
+  ): Promise<ApiResponse<Task[]>> {
     const params = new URLSearchParams()
-    if (filters?.completed !== undefined) params.append("completed", filters.completed.toString())
+    if (filters?.status) params.append("status", filters.status)
     if (filters?.difficulty) params.append("difficulty", filters.difficulty)
     if (filters?.page) params.append("page", filters.page.toString())
     if (filters?.limit) params.append("limit", filters.limit.toString())
 
     const queryString = params.toString()
-    return apiClient.get<PaginatedResponse<Task>>(`/realms/${realmId}/tasks${queryString ? `?${queryString}` : ""}`)
+    return apiClient.get<ApiResponse<Task[]>>(`/realms/${realmId}/tasks${queryString ? `?${queryString}` : ""}`)
   },
 
   async getTaskById(realmId: string, taskId: string): Promise<ApiResponse<Task>> {
@@ -176,29 +185,61 @@ export const badgeService = {
   },
 }
 
-// Analytics Services
-export const analyticsService = {
-  async getDashboardStats(): Promise<
-    ApiResponse<{
-      totalXP: number
-      level: number
-      completedTasks: number
-      activeRealms: number
-      weeklyProgress: number[]
-      recentActivity: any[]
-    }>
-  > {
-    return apiClient.get<ApiResponse<any>>("/analytics/dashboard")
+// Daily Quest Services
+export const dailyQuestService = {
+  async getDailyQuests(includeExpired = false): Promise<ApiResponse<any[]>> {
+    return apiClient.get<ApiResponse<any[]>>(`/daily-quests?includeExpired=${includeExpired}`)
   },
 
-  async getXPHistory(days = 30): Promise<
-    ApiResponse<
-      {
-        date: string
-        xp: number
-      }[]
-    >
-  > {
-    return apiClient.get<ApiResponse<any>>(`/analytics/xp-history?days=${days}`)
+  async createCustomQuest(questData: {
+    title: string
+    description: string
+    target: number
+    xpReward: number
+  }): Promise<ApiResponse<any>> {
+    return apiClient.post<ApiResponse<any>>("/daily-quests", questData)
+  },
+
+  async updateQuestProgress(questId: string, increment = 1): Promise<ApiResponse<any>> {
+    return apiClient.patch<ApiResponse<any>>(`/daily-quests/${questId}/progress`, { increment })
+  },
+
+  async claimQuestReward(questId: string): Promise<ApiResponse<any>> {
+    return apiClient.post<ApiResponse<any>>(`/daily-quests/${questId}/claim`)
+  },
+
+  async updateCustomQuest(questId: string, questData: {
+    title: string
+    description: string
+    target: number
+    xpReward: number
+  }): Promise<ApiResponse<any>> {
+    return apiClient.patch<ApiResponse<any>>(`/daily-quests/${questId}`, questData)
+  },
+
+  async deleteCustomQuest(questId: string): Promise<ApiResponse<void>> {
+    return apiClient.delete<ApiResponse<void>>(`/daily-quests/${questId}`)
+  },
+}
+
+// Avatar Services  
+export const avatarService = {
+  async getAvailableAvatars(): Promise<ApiResponse<any[]>> {
+    return apiClient.get<ApiResponse<any[]>>("/users/avatar")
+  },
+
+  async updateAvatar(avatarId: string): Promise<ApiResponse<any>> {
+    return apiClient.patch<ApiResponse<any>>("/users/avatar", { avatarId })
+  },
+}
+
+// Analytics Services
+export const analyticsService = {
+  async getUserStats(): Promise<ApiResponse<any>> {
+    return apiClient.get<ApiResponse<any>>("/users/stats")
+  },
+
+  async getXPHistory(days = 30): Promise<ApiResponse<any>> {
+    return apiClient.get<ApiResponse<any>>(`/users/xp-history?days=${days}`)
   },
 }

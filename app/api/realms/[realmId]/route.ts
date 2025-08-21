@@ -5,14 +5,14 @@ import Task from "@/lib/db/models/Task"
 import User from "@/lib/db/models/User"
 import { withAuth } from "@/lib/auth/middleware"
 
-export const GET = withAuth(async (request, { params }) => {
+export const GET = withAuth(async (request, { params }: { params: { realmId: string } }) => {
   try {
     await connectDB()
-
-    const { id } = params
+    console.log("params", params)
+    const { realmId } = params
 
     const realm = await Realm.findOne({
-      _id: id,
+      _id: realmId,
       userId: request.user.userId,
     })
 
@@ -27,7 +27,7 @@ export const GET = withAuth(async (request, { params }) => {
     }
 
     // Get realm tasks
-    const tasks = await Task.find({ realmId: id }).sort({ createdAt: -1 })
+    const tasks = await Task.find({ realmId: realmId }).sort({ createdAt: -1 })
 
     const realmData = {
       id: realm._id.toString(),
@@ -78,11 +78,11 @@ export const PATCH = withAuth(async (request, { params }) => {
   try {
     await connectDB()
 
-    const { id } = params
+    const { realmId } = params
     const { name, description, theme, difficulty } = await request.json()
 
     const realm = await Realm.findOne({
-      _id: id,
+      _id: realmId,
       userId: request.user.userId,
     })
 
@@ -168,10 +168,10 @@ export const DELETE = withAuth(async (request, { params }) => {
   try {
     await connectDB()
 
-    const { id } = params
+    const { realmId } = params
 
     const realm = await Realm.findOne({
-      _id: id,
+      _id: realmId,
       userId: request.user.userId,
     })
 
@@ -186,10 +186,10 @@ export const DELETE = withAuth(async (request, { params }) => {
     }
 
     // Delete all tasks in the realm
-    await Task.deleteMany({ realmId: id })
+    await Task.deleteMany({ realmId: realmId })
 
     // Delete the realm
-    await Realm.findByIdAndDelete(id)
+    await Realm.findByIdAndDelete(realmId)
 
     // Update user's active realms count
     await User.findByIdAndUpdate(request.user.userId, {

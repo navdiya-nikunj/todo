@@ -4,7 +4,7 @@ import { createContext, useContext, useReducer, useEffect, type ReactNode } from
 import { authService, userService } from "@/lib/api/services"
 import type { User } from "@/lib/types/realm-quest"
 import type { ApiState } from "@/lib/types/api"
-
+import Cookies from "js-cookie"
 // Auth State
 interface AuthState extends ApiState<User> {
   isAuthenticated: boolean
@@ -14,7 +14,7 @@ interface AuthState extends ApiState<User> {
 // Auth Actions
 type AuthAction =
   | { type: "AUTH_START" }
-  | { type: "AUTH_SUCCESS"; payload: { user: User; token: string } }
+  | { type: "AUTH_SUCCESS"; payload: { user: User; accessToken: string } }
   | { type: "AUTH_ERROR"; payload: string }
   | { type: "UPDATE_USER"; payload: User }
   | { type: "LOGOUT" }
@@ -44,7 +44,7 @@ function authReducer(state: AuthState, action: AuthAction): AuthState {
         loading: false,
         error: null,
         data: action.payload.user,
-        token: action.payload.token,
+        token: action.payload.accessToken,
         isAuthenticated: true,
       }
     case "AUTH_ERROR":
@@ -92,24 +92,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Check for existing token on mount
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem("auth_token")
+     
+      const token = Cookies.get("token")
+    
       if (token) {
         try {
+          console.log("Getting current user")
           dispatch({ type: "AUTH_START" })
+         
           const response = await authService.getCurrentUser()
+
           dispatch({
             type: "AUTH_SUCCESS",
-            payload: { user: response.data, token },
+            payload: { user: response.data, accessToken: token },
           })
-        } catch (error) {
-          dispatch({ type: "AUTH_ERROR", payload: "Session expired" })
-          localStorage.removeItem("auth_token")
+          
+        
+        } catch (error: any) {
+          // Try to refresh token if available
+          const refreshToken = Cookies.get("refresh_token")
+          if (refreshToken) {
+            try {
+              const refreshResponse = await authService.refreshToken()
+              const userResponse = await authService.getCurrentUser()
+              dispatch({
+                type: "AUTH_SUCCESS",
+                payload: { user: userResponse.data, accessToken: refreshResponse.data.accessToken },
+              })
+            } catch (refreshError) {
+              dispatch({ type: "AUTH_ERROR", payload: "Session expired" })
+              Cookies.remove("token")
+              Cookies.remove("refresh_token")
+            }
+          } else {
+            dispatch({ type: "AUTH_ERROR", payload: "Session expired" })
+            Cookies.remove("token")
+          }
         }
       }
     }
 
     checkAuth()
   }, [])
+useEffect(() => {
+  console.log("Auth state changed", state)
+}, [state])
 
   const login = async (email: string, password: string) => {
     try {
@@ -117,7 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authService.login({ email, password })
       dispatch({
         type: "AUTH_SUCCESS",
-        payload: response.data,
+        payload: { user: response.data.user, accessToken: response.data.accessToken },
       })
     } catch (error: any) {
       dispatch({ type: "AUTH_ERROR", payload: error.message || "Login failed" })
@@ -131,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authService.register({ username, email, password })
       dispatch({
         type: "AUTH_SUCCESS",
-        payload: response.data,
+        payload: { user: response.data.user, accessToken: response.data.accessToken },
       })
     } catch (error: any) {
       dispatch({ type: "AUTH_ERROR", payload: error.message || "Registration failed" })
@@ -161,8 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const updateAvatar = async (avatarId: string) => {
     try {
-      const response = await userService.updateAvatar(avatarId)
-      dispatch({ type: "UPDATE_USER", payload: response.data })
+      await userService.updateAvatar(avatarId)
+      // Update the avatar in the current user state
+      if (state.data) {
+        dispatch({ type: "UPDATE_USER", payload: { ...state.data, avatar: avatarId } })
+      }
     } catch (error: any) {
       dispatch({ type: "AUTH_ERROR", payload: error.message || "Avatar update failed" })
       throw error

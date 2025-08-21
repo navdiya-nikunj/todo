@@ -8,7 +8,7 @@ import { withAuth } from "@/lib/auth/middleware"
 import { calculateStreakMultiplier } from "@/lib/utils/xp"
 import { checkAndAwardBadges } from "@/lib/utils/badges"
 
-export const POST = withAuth(async (request, { params }) => {
+export const POST = withAuth(async (request, { params }: { params: { realmId: string; taskId: string } }) => {
   try {
     await connectDB()
 

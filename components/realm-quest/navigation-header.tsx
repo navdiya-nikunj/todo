@@ -15,8 +15,8 @@ interface NavigationHeaderProps {
 export function NavigationHeader({ title, subtitle, backLabel = "Back", onBack, rightContent }: NavigationHeaderProps) {
   return (
     <header className="mb-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3 sm:items-center">
           {onBack && (
             <Button
               onClick={onBack}
@@ -28,11 +28,15 @@ export function NavigationHeader({ title, subtitle, backLabel = "Back", onBack, 
             </Button>
           )}
           <div>
-            <h1 className="text-2xl font-serif font-bold text-realm-neon-blue">{title}</h1>
-            {subtitle && <p className="text-realm-silver/70 text-sm">{subtitle}</p>}
+            <h1 className="text-xl sm:text-2xl font-serif font-bold text-realm-neon-blue break-words">{title}</h1>
+            {subtitle && <p className="text-realm-silver/70 text-sm break-words">{subtitle}</p>}
           </div>
         </div>
-        {rightContent}
+        {rightContent && (
+          <div className="mt-2 sm:mt-0 w-full sm:w-auto flex flex-wrap justify-start sm:justify-end gap-2">
+            {rightContent}
+          </div>
+        )}
       </div>
     </header>
   )

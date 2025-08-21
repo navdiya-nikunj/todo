@@ -5,18 +5,19 @@ import Task from "@/lib/db/models/Task"
 import { withAuth } from "@/lib/auth/middleware"
 import { getXPRewardForDifficulty } from "@/lib/utils/xp"
 
-export const GET = withAuth(async (request, { params }) => {
+export const GET = withAuth(async (request, { params }: { params: { realmId: string } }) => {
   try {
     await connectDB()
 
-    const { realmId } = params
+    const { realmId } = await params
     const { searchParams } = new URL(request.url)
     const page = Number.parseInt(searchParams.get("page") || "1")
     const limit = Number.parseInt(searchParams.get("limit") || "20")
     const status = searchParams.get("status")
     const difficulty = searchParams.get("difficulty")
     const search = searchParams.get("search")
-
+    console.log("user", request.user)
+    
     // Verify realm ownership
     const realm = await Realm.findOne({
       _id: realmId,

@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Space_Grotesk, DM_Sans } from "next/font/google"
 import "./globals.css"
 import { AppProviders } from "@/lib/contexts/providers"
@@ -17,10 +17,19 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  title: "RealmQuest - Gamified Todo App",
+  title: "RealmQuest - Gamified Todo App by Nikunj Navdiya",
   description: "Enter the realm, defeat your tasks, level up your life",
-  generator: "v0.app",
+  generator: "Nikunj Navdiya",
+  icons: {
+    icon: "/favicon.ico",
+  },
 }
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+}
+
 
 export default function RootLayout({
   children,

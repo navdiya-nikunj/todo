@@ -4,18 +4,18 @@ import User from "@/lib/db/models/User"
 import Badge from "@/lib/db/models/Badge"
 import { withAuth } from "@/lib/auth/middleware"
 
-// Available avatars with unlock requirements
+// Available avatars with unlock requirements and UI metadata
 const AVAILABLE_AVATARS = [
   // Starter avatars
-  { id: "starter-warrior", name: "Warrior", category: "starter", unlockRequirement: null },
-  { id: "starter-mage", name: "Mage", category: "starter", unlockRequirement: null },
-  { id: "starter-archer", name: "Archer", category: "starter", unlockRequirement: null },
+  { id: "starter-warrior", name: "Warrior", category: "starter", unlockRequirement: null, description: "A brave beginner hunter.", rarity: "common" },
+  { id: "starter-mage", name: "Mage", category: "starter", unlockRequirement: null, description: "A novice of arcane arts.", rarity: "common" },
+  { id: "starter-archer", name: "Archer", category: "starter", unlockRequirement: null, description: "A swift ranged fighter.", rarity: "common" },
 
   // Level-based avatars
-  { id: "knight", name: "Knight", category: "level", unlockRequirement: { type: "level", value: 3 } },
-  { id: "assassin", name: "Assassin", category: "level", unlockRequirement: { type: "level", value: 5 } },
-  { id: "paladin", name: "Paladin", category: "level", unlockRequirement: { type: "level", value: 7 } },
-  { id: "shadow-lord", name: "Shadow Lord", category: "level", unlockRequirement: { type: "level", value: 10 } },
+  { id: "knight", name: "Knight", category: "level", unlockRequirement: { type: "level", value: 3 }, description: "Tempered by early battles.", rarity: "rare" },
+  { id: "assassin", name: "Assassin", category: "level", unlockRequirement: { type: "level", value: 5 }, description: "Silent and deadly.", rarity: "epic" },
+  { id: "paladin", name: "Paladin", category: "level", unlockRequirement: { type: "level", value: 7 }, description: "A holy guardian of light.", rarity: "epic" },
+  { id: "shadow-lord", name: "Shadow Lord", category: "level", unlockRequirement: { type: "level", value: 10 }, description: "Master of the unseen.", rarity: "legendary" },
 
   // Badge-based avatars
   {
@@ -23,18 +23,24 @@ const AVAILABLE_AVATARS = [
     name: "Dungeon Master",
     category: "badge",
     unlockRequirement: { type: "badge", value: "dungeon_master" },
+    description: "For those who conquer many.",
+    rarity: "legendary",
   },
   {
     id: "streak-king",
     name: "Streak King",
     category: "badge",
-    unlockRequirement: { type: "badge", value: "streak_king" },
+    unlockRequirement: { type: "badge", value: "elite_hunter" },
+    description: "Crowned by relentless consistency.",
+    rarity: "legendary",
   },
   {
     id: "elite-hunter",
     name: "Elite Hunter",
     category: "badge",
     unlockRequirement: { type: "badge", value: "elite_hunter" },
+    description: "An apex hunter among hunters.",
+    rarity: "legendary",
   },
 ]
 
@@ -43,8 +49,6 @@ export const GET = withAuth(async (request) => {
     await connectDB()
 
     const user = await User.findById(request.user.userId)
-    const badges = await Badge.find({ userId: user._id, completed: true })
-
     if (!user) {
       return NextResponse.json(
         {
@@ -54,6 +58,8 @@ export const GET = withAuth(async (request) => {
         { status: 404 },
       )
     }
+
+    const badges = await Badge.find({ userId: user._id, completed: true })
 
     const userBadgeTypes = badges.map((badge) => badge.badgeType)
 
@@ -69,8 +75,20 @@ export const GET = withAuth(async (request) => {
         }
       }
 
+      // Attach human-readable requirement text for UI
+      const requirementText = avatar.unlockRequirement
+        ? avatar.unlockRequirement.type === "level"
+          ? `Reach level ${avatar.unlockRequirement.value}`
+          : avatar.unlockRequirement.type === "badge"
+            ? "Unlock required badge"
+            : undefined
+        : undefined
+
       return {
         ...avatar,
+        unlockRequirement: avatar.unlockRequirement
+          ? { ...avatar.unlockRequirement, requirement: requirementText }
+          : null,
         unlocked,
         selected: user.avatar === avatar.id,
       }

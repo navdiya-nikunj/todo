@@ -48,7 +48,7 @@ const DailyQuestSchema = new Schema<IDailyQuest>(
     progress: {
       type: Number,
       default: 0,
-      min: 0,
+      min: -1,
     },
     xpReward: {
       type: Number,

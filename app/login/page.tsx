@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import type React from "react"
 
 import { useRouter } from "next/navigation"
@@ -8,16 +8,39 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Sword, Shield, Zap, UserIcon, Mail, Lock } from "lucide-react"
+import { Sword, Shield, Zap, UserIcon, Mail, Lock, AlertTriangle } from "lucide-react"
+import { useAuth } from "@/lib/contexts/auth-context"
 
 export default function LoginPage() {
   const router = useRouter()
+  const { state, login, register, clearError } = useAuth()
   const [authMode, setAuthMode] = useState<"login" | "signup">("login")
-  const [formData, setFormData] = useState({ email: "", password: "", name: "" })
+  const [formData, setFormData] = useState({ email: "", password: "", username: "" })
 
-  const handleAuth = (event: React.FormEvent<HTMLFormElement>) => {
+
+  useEffect(() => {
+    // Redirect based on authentication status
+    console.log(state.isAuthenticated)
+    if (state.isAuthenticated) {
+      router.push("/dashboard")
+    }
+  }, [state, router])
+
+
+  const handleAuth = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    router.push("/dashboard")
+    
+    try {
+      if (authMode === "login") {
+        await login(formData.email, formData.password)
+      } else {
+        await register(formData.username, formData.email, formData.password)
+      }
+      router.push("/dashboard")
+    } catch (error) {
+      // Error is handled by auth context
+      console.error("Auth error:", error)
+    }
   }
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,6 +49,11 @@ export default function LoginPage() {
       ...prev,
       [name]: value,
     }))
+    
+    // Clear error when user starts typing
+    if (state.error) {
+      clearError()
+    }
   }
 
   return (
@@ -58,6 +86,13 @@ export default function LoginPage() {
 
         <Card className="realm-panel realm-glow transition-all duration-500 hover:scale-105 hover:realm-glow-intense">
           <div className="p-6">
+            {state.error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-400" />
+                <span className="text-red-400 text-sm">{state.error}</span>
+              </div>
+            )}
+            
             <Tabs value={authMode} onValueChange={(value) => setAuthMode(value as "login" | "signup")}>
               <TabsList className="grid w-full grid-cols-2 mb-6 bg-realm-gunmetal border border-realm-neon-blue/20">
                 <TabsTrigger
@@ -108,9 +143,22 @@ export default function LoginPage() {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full realm-button text-realm-neon-blue font-semibold">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Enter the Realm
+                  <Button 
+                    type="submit" 
+                    className="w-full realm-button text-realm-neon-blue font-semibold"
+                    disabled={state.loading}
+                  >
+                    {state.loading ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-realm-neon-blue/30 border-t-realm-neon-blue" />
+                        Entering...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 mr-2" />
+                        Enter the Realm
+                      </>
+                    )}
                   </Button>
                 </form>
               </TabsContent>
@@ -123,10 +171,10 @@ export default function LoginPage() {
                       Hunter Name
                     </Label>
                     <Input
-                      id="name"
-                      name="name"
+                      id="username"
+                      name="username"
                       type="text"
-                      value={formData.name}
+                      value={formData.username}
                       onChange={handleInputChange}
                       className="bg-realm-gunmetal border-realm-neon-blue/30 focus:border-realm-neon-blue text-realm-silver"
                       placeholder="Choose your hunter name"
@@ -165,9 +213,22 @@ export default function LoginPage() {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full realm-button text-realm-neon-blue font-semibold">
-                    <Shield className="w-4 h-4 mr-2" />
-                    Begin Your Quest
+                  <Button 
+                    type="submit" 
+                    className="w-full realm-button text-realm-neon-blue font-semibold"
+                    disabled={state.loading}
+                  >
+                    {state.loading ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-realm-neon-blue/30 border-t-realm-neon-blue" />
+                        Creating Hunter...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4 mr-2" />
+                        Begin Your Quest
+                      </>
+                    )}
                   </Button>
                 </form>
               </TabsContent>

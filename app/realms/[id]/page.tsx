@@ -8,29 +8,34 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Plus, Sword, Shield, Zap, Trash2, Edit3, CheckCircle, Clock, Star, Trophy, Target } from "lucide-react"
+import { Plus, Sword, Shield, Zap, Trash2, Edit3, CheckCircle, Clock, Star, Trophy, Target, AlertTriangle } from "lucide-react"
 
 import { NavigationHeader } from "@/components/realm-quest/navigation-header"
 import { ThemeIcon } from "@/components/realm-quest/theme-icons"
 import { ProgressBar } from "@/components/realm-quest/progress-bar"
-import { mockRealms, mockTasks, mockUser } from "@/lib/data/mock-data"
+import { LoadingSpinner } from "@/components/realm-quest/loading-spinner"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { realmService, taskService, dailyQuestService } from "@/lib/api/services"
 import { getThemeColor, getDifficultyColor, getXPReward, calculateProgressPercentage } from "@/lib/utils/realm-quest"
-import { updateDailyQuestProgress } from "@/lib/utils/realm-quest"
-import type { Task, TaskDifficulty, TaskStatus, Realm, DailyQuest } from "@/lib/types/realm-quest"
+import type { Task, TaskDifficulty, TaskStatus, Realm } from "@/lib/types/realm-quest"
 
 export default function RealmDetailPage() {
   const router = useRouter()
   const params = useParams()
   const realmId = params.id as string
+  const { state: authState } = useAuth()
 
   const [realm, setRealm] = useState<Realm | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
-  const [user, setUser] = useState(mockUser)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState<string | null>(null)
+  const [completing, setCompleting] = useState<string | null>(null)
   const [comboCount, setComboCount] = useState(0)
-  const [showReward, setShowReward] = useState<{ xp: number; combo?: number } | null>(null)
-  const [dailyQuests, setDailyQuests] = useState<DailyQuest[]>([])
+  const [showReward, setShowReward] = useState<{ xp: number; combo?: number; levelUp?: any; badges?: any[] } | null>(null)
 
   // Form state for task creation/editing
   const [taskForm, setTaskForm] = useState({
@@ -39,40 +44,67 @@ export default function RealmDetailPage() {
     difficulty: "medium" as TaskDifficulty,
   })
 
+  // Load realm and tasks data
   useEffect(() => {
-    // Find the realm by ID
-    const foundRealm = mockRealms.find((r) => r.id === realmId)
-    if (foundRealm) {
-      setRealm(foundRealm)
-      // Filter tasks for this realm
-      const realmTasks = mockTasks.filter((t) => t.realmId === realmId)
-      setTasks(realmTasks)
+    const loadRealmData = async () => {
+      if (!authState.isAuthenticated) {
+        router.push("/login")
+        return
+      }
+
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Load realm and tasks in parallel
+        const [realmResponse, tasksResponse] = await Promise.all([
+          realmService.getRealmById(realmId),
+          taskService.getTasks(realmId, { limit: 100 })
+        ])
+
+        setRealm(realmResponse.data)
+        setTasks(tasksResponse.data)
+      } catch (err: any) {
+        setError(err.message || "Failed to load realm data")
+        console.error("Realm detail error:", err)
+      } finally {
+        setLoading(false)
+      }
     }
-  }, [realmId])
+
+    loadRealmData()
+  }, [realmId, authState.isAuthenticated, router])
 
   const handleInputChange = (field: string, value: string) => {
     setTaskForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleCreateTask = () => {
+  const handleCreateTask = async () => {
     if (!taskForm.title.trim()) return
 
-    const newTask: Task = {
-      id: `task_${Date.now()}`,
+    try {
+      setCreating(true)
+      const response = await taskService.createTask(realmId, {
       title: taskForm.title,
       description: taskForm.description,
       difficulty: taskForm.difficulty,
-      status: "pending",
       realmId: realmId,
-    }
+      })
 
-    setTasks((prev) => [...prev, newTask])
+      // Add new task to the list
+      setTasks((prev) => [...prev, response.data])
     setTaskForm({ title: "", description: "", difficulty: "medium" })
     setIsCreateDialogOpen(false)
 
-    // Update realm total tasks
+      // Update realm total tasks count
     if (realm) {
       setRealm((prev) => (prev ? { ...prev, totalTasks: prev.totalTasks + 1 } : null))
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to create task")
+      console.error("Create task error:", err)
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -85,59 +117,125 @@ export default function RealmDetailPage() {
     })
   }
 
-  const handleUpdateTask = () => {
+  const handleUpdateTask = async () => {
     if (!editingTask || !taskForm.title.trim()) return
 
+    try {
+      setUpdating(editingTask.id)
+      const response = await taskService.updateTask(realmId, editingTask.id, {
+        title: taskForm.title,
+        description: taskForm.description,
+        difficulty: taskForm.difficulty,
+      })
+
+      // Update task in the list
     setTasks((prev) =>
       prev.map((task) =>
-        task.id === editingTask.id
-          ? { ...task, title: taskForm.title, description: taskForm.description, difficulty: taskForm.difficulty }
-          : task,
+          task.id === editingTask.id ? response.data : task
       ),
     )
 
     setEditingTask(null)
     setTaskForm({ title: "", description: "", difficulty: "medium" })
+    } catch (err: any) {
+      setError(err.message || "Failed to update task")
+      console.error("Update task error:", err)
+    } finally {
+      setUpdating(null)
+    }
   }
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      await taskService.deleteTask(realmId, taskId)
+      
+      // Remove task from the list
     setTasks((prev) => prev.filter((task) => task.id !== taskId))
 
     // Update realm total tasks
     if (realm) {
       setRealm((prev) => (prev ? { ...prev, totalTasks: Math.max(0, prev.totalTasks - 1) } : null))
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to delete task")
+      console.error("Delete task error:", err)
     }
   }
 
-  const handleCompleteTask = (task: Task) => {
-    // Mark task as completed
-    setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: "completed" as TaskStatus } : t)))
+  const handleCompleteTask = async (task: Task) => {
+    try {
+      setCompleting(task.id)
+      const response = await taskService.completeTask(realmId, task.id)
 
-    // Calculate XP reward
-    const xpReward = getXPReward(task.difficulty)
-    const newCombo = comboCount + 1
-    const comboMultiplier = Math.min(1 + (newCombo - 1) * 0.1, 2) // Max 2x multiplier
-    const totalXP = Math.floor(xpReward * comboMultiplier)
-
-    // Update user XP
-    setUser((prev) => ({ ...prev, xp: prev.xp + totalXP }))
-    setComboCount(newCombo)
+      // Update task in the list
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? response.data.task : t)))
 
     // Update realm progress
     if (realm) {
       setRealm((prev) => (prev ? { ...prev, tasksCompleted: prev.tasksCompleted + 1 } : null))
     }
 
-    setDailyQuests((prev) => {
-      let updated = updateDailyQuestProgress(prev, "complete_tasks", 1)
-      updated = updateDailyQuestProgress(updated, "defeat_enemies", 1)
-      updated = updateDailyQuestProgress(updated, "earn_xp", totalXP)
-      return updated
-    })
+      // Calculate combo
+      const newCombo = comboCount + 1
+      setComboCount(newCombo)
+
+      // Try to update daily quest progress (don't fail task completion if this fails)
+      try {
+        // Update quest progress for task-related quests
+        await Promise.all([
+          dailyQuestService.updateQuestProgress("complete_tasks", 1).catch(() => {}),
+          dailyQuestService.updateQuestProgress("defeat_enemies", 1).catch(() => {}),
+          dailyQuestService.updateQuestProgress("earn_xp", response.data.xpGained).catch(() => {}),
+        ])
+      } catch (err) {
+        // Silently fail daily quest updates - don't interfere with main task completion
+        console.warn("Failed to update daily quest progress:", err)
+      }
 
     // Show reward animation
-    setShowReward({ xp: totalXP, combo: newCombo > 1 ? newCombo : undefined })
-    setTimeout(() => setShowReward(null), 3000)
+      setShowReward({
+        xp: response.data.xpGained,
+        combo: newCombo > 1 ? newCombo : undefined,
+        levelUp: response.data.levelUp,
+        badges: response.data.newBadges || []
+      })
+      setTimeout(() => setShowReward(null), 4000)
+    } catch (err: any) {
+      setError(err.message || "Failed to complete task")
+      console.error("Complete task error:", err)
+    } finally {
+      setCompleting(null)
+    }
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  // Show error state
+  if (error && !realm) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-400" />
+          <h2 className="text-xl font-bold text-realm-silver mb-2">Failed to Load Realm</h2>
+          <p className="text-realm-silver/70 mb-4">{error}</p>
+          <div className="flex gap-4 justify-center">
+            <Button onClick={() => window.location.reload()} className="realm-button text-realm-neon-blue">
+              Try Again
+            </Button>
+            <Button onClick={() => router.push("/realms")} variant="outline" className="border-realm-silver/30 text-realm-silver">
+              Return to Realms
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   if (!realm) {
@@ -170,10 +268,23 @@ export default function RealmDetailPage() {
       {/* Reward Animation Overlay */}
       {showReward && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none z-50">
-          <div className="realm-panel p-8 text-center animate-bounce">
+          <div className="realm-panel p-8 text-center animate-bounce max-w-md">
             <div className="text-4xl font-serif font-bold text-realm-neon-blue mb-2">+{showReward.xp} XP</div>
             {showReward.combo && (
               <div className="text-xl text-realm-crimson-red font-bold">{showReward.combo}x COMBO!</div>
+            )}
+            {showReward.levelUp && (
+              <div className="text-2xl text-yellow-400 font-bold mt-2">
+                LEVEL UP! {showReward.levelUp.from} → {showReward.levelUp.to}
+              </div>
+            )}
+            {showReward.badges && showReward.badges.length > 0 && (
+              <div className="mt-2">
+                <div className="text-lg text-purple-400 font-bold">NEW BADGES!</div>
+                {showReward.badges.map((badge, index) => (
+                  <div key={index} className="text-sm text-purple-300">{badge.name}</div>
+                ))}
+              </div>
             )}
             <div className="flex justify-center mt-2">
               <Star className="w-6 h-6 text-yellow-400 animate-spin" />
@@ -183,6 +294,19 @@ export default function RealmDetailPage() {
       )}
 
       <div className="max-w-7xl mx-auto relative z-10">
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <span className="text-red-400 text-sm">{error}</span>
+            <button 
+              onClick={() => setError(null)}
+              className="ml-auto text-red-400 hover:text-red-300"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         <NavigationHeader
           title={realm.name}
           subtitle={`${realm.description} • ${realm.tasksCompleted}/${realm.totalTasks} enemies defeated`}
@@ -192,11 +316,11 @@ export default function RealmDetailPage() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <div className="text-sm text-realm-silver/70">Hunter Level</div>
-                <div className="text-lg font-bold text-realm-neon-blue">{user.level}</div>
+                <div className="text-lg font-bold text-realm-neon-blue">{authState.data?.level}</div>
               </div>
               <div className="text-right">
                 <div className="text-sm text-realm-silver/70">XP</div>
-                <div className="text-lg font-bold text-realm-neon-blue">{user.xp}</div>
+                <div className="text-lg font-bold text-realm-neon-blue">{authState.data?.xp}</div>
               </div>
               {comboCount > 0 && (
                 <div className="text-right">
@@ -247,9 +371,9 @@ export default function RealmDetailPage() {
         <div className="mb-8">
           <ProgressBar
             current={realm.tasksCompleted}
-            total={realm.totalTasks}
+            max={realm.totalTasks}
             label="Realm Completion"
-            showPercentage={true}
+            showNumbers={true}
           />
         </div>
 
@@ -300,9 +424,22 @@ export default function RealmDetailPage() {
                   </Select>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={handleCreateTask} className="realm-button text-realm-neon-blue flex-1">
+                  <Button 
+                    onClick={handleCreateTask} 
+                    className="realm-button text-realm-neon-blue flex-1"
+                    disabled={creating}
+                  >
+                    {creating ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-realm-neon-blue/30 border-t-realm-neon-blue" />
+                        Summoning...
+                      </>
+                    ) : (
+                      <>
                     <Sword className="w-4 h-4 mr-2" />
                     Summon Enemy
+                      </>
+                    )}
                   </Button>
                   <Button
                     variant="outline"
@@ -380,9 +517,19 @@ export default function RealmDetailPage() {
                     <Button
                       onClick={() => handleCompleteTask(task)}
                       className="w-full realm-button text-green-400 hover:bg-green-400/20"
+                      disabled={completing === task.id}
                     >
+                      {completing === task.id ? (
+                        <>
+                          <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-green-400/30 border-t-green-400" />
+                          Defeating...
+                        </>
+                      ) : (
+                        <>
                       <CheckCircle className="w-4 h-4 mr-2" />
                       Defeat Enemy
+                        </>
+                      )}
                     </Button>
                   </div>
                 </Card>
@@ -490,9 +637,22 @@ export default function RealmDetailPage() {
               </Select>
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleUpdateTask} className="realm-button text-realm-neon-blue flex-1">
+              <Button 
+                onClick={handleUpdateTask} 
+                className="realm-button text-realm-neon-blue flex-1"
+                disabled={updating === editingTask?.id}
+              >
+                {updating === editingTask?.id ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-realm-neon-blue/30 border-t-realm-neon-blue" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
                 <Edit3 className="w-4 h-4 mr-2" />
                 Update Enemy
+                  </>
+                )}
               </Button>
               <Button
                 variant="outline"

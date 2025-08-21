@@ -7,11 +7,12 @@ import { Lock, Crown } from "lucide-react"
 interface AvatarOption {
   id: string
   name: string
-  image: string
+  image?: string
   category: "starter" | "level" | "badge" | "premium"
   unlockRequirement?: {
     type: "level" | "badge" | "tasks" | "realms"
     value: number | string
+    requirement?: string
   }
   description: string
   rarity: "common" | "rare" | "epic" | "legendary"
@@ -62,6 +63,7 @@ export function AvatarSelectionCard({
   onClick,
   unlockRequirementText,
 }: AvatarSelectionCardProps) {
+  const imageSrc = avatar.image || `/avatars/${avatar.id}.png`
   return (
     <Card
       className={`realm-panel transition-all duration-300 ${
@@ -79,7 +81,7 @@ export function AvatarSelectionCard({
         <div className="relative mx-auto w-16 h-16 mb-3">
           <Avatar className="w-full h-full border border-realm-neon-blue/30">
             <AvatarImage
-              src={avatar.image || "/placeholder.svg"}
+              src={imageSrc}
               alt={avatar.name}
               className={isUnlocked ? "" : "grayscale"}
             />

@@ -1,21 +1,27 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, X, Flame, Snowflake, Leaf, Moon, Zap } from "lucide-react"
+import { Plus, X, Flame, Snowflake, Leaf, Moon, Zap, AlertTriangle } from "lucide-react"
 
 // Updated imports to use organized structure
 import { RealmCard } from "@/components/realm-quest/realm-card"
 import { NavigationHeader } from "@/components/realm-quest/navigation-header"
-import { mockRealms } from "@/lib/data/mock-data"
+import { LoadingSpinner } from "@/components/realm-quest/loading-spinner"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { realmService } from "@/lib/api/services"
 import { REALM_THEMES } from "@/lib/constants/realm-quest"
-import type { RealmTheme } from "@/lib/types/realm-quest"
+import type { RealmTheme, Realm } from "@/lib/types/realm-quest"
 
 export default function RealmsPage() {
   const router = useRouter()
-  const [realms, setRealms] = useState(mockRealms)
+  const { state: authState } = useAuth()
+  const [realms, setRealms] = useState<Realm[]>([])
+  const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newRealm, setNewRealm] = useState({
     name: "",
@@ -24,27 +30,55 @@ export default function RealmsPage() {
     difficulty: "medium" as "easy" | "medium" | "hard",
   })
 
-  const handleCreateRealm = () => {
-    if (!newRealm.name.trim()) return
+  // Load realms data
+  useEffect(() => {
+    const loadRealms = async () => {
+      if (!authState.isAuthenticated) {
+        router.push("/login")
+        return
+      }
 
-    const realm = {
-      id: `realm-${Date.now()}`,
-      name: newRealm.name,
-      description: newRealm.description,
-      theme: newRealm.theme,
-      difficulty: newRealm.difficulty,
-      tasksCompleted: 0,
-      totalTasks: 0,
-      xpEarned: 0,
-      createdAt: new Date().toISOString(),
+      try {
+        setLoading(true)
+        setError(null)
+        const response = await realmService.getRealms(1, 50) // Get more realms for now
+        setRealms(response.data)
+      } catch (err: any) {
+        setError(err.message || "Failed to load realms")
+        console.error("Realms error:", err)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    setRealms([...realms, realm])
-    setShowCreateModal(false)
-    setNewRealm({ name: "", description: "", theme: "fire", difficulty: "medium" })
+    loadRealms()
+  }, [authState.isAuthenticated, router])
 
-    // Navigate to the new realm
-    router.push(`/realms/${realm.id}`)
+  const handleCreateRealm = async () => {
+    if (!newRealm.name.trim()) return
+
+    try {
+      setCreating(true)
+      const response = await realmService.createRealm({
+        name: newRealm.name,
+        description: newRealm.description,
+        theme: newRealm.theme,
+        difficulty: newRealm.difficulty,
+      })
+
+      // Add new realm to the list
+      setRealms([...realms, response.data])
+      setShowCreateModal(false)
+      setNewRealm({ name: "", description: "", theme: "fire", difficulty: "medium" })
+
+      // Navigate to the new realm
+      router.push(`/realms/${response.data.id}`)
+    } catch (err: any) {
+      setError(err.message || "Failed to create realm")
+      console.error("Create realm error:", err)
+    } finally {
+      setCreating(false)
+    }
   }
 
   const getThemeIcon = (theme: RealmTheme) => {
@@ -64,8 +98,26 @@ export default function RealmsPage() {
     }
   }
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen p-4">
+      {error && (
+        <div className="max-w-6xl mx-auto mb-4">
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-400" />
+            <span className="text-red-400 text-sm">{error}</span>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto">
         <NavigationHeader
           title="Realm Management"
@@ -181,10 +233,17 @@ export default function RealmsPage() {
                 </Button>
                 <Button
                   onClick={handleCreateRealm}
-                  disabled={!newRealm.name.trim()}
+                  disabled={!newRealm.name.trim() || creating}
                   className="flex-1 bg-gradient-to-r from-realm-neon-blue to-realm-neon-blue/80 text-realm-dark font-semibold hover:from-realm-neon-blue/90 hover:to-realm-neon-blue/70 disabled:opacity-50"
                 >
-                  Forge Realm
+                  {creating ? (
+                    <>
+                      <div className="w-4 h-4 mr-2 animate-spin rounded-full border-2 border-realm-dark/30 border-t-realm-dark" />
+                      Forging...
+                    </>
+                  ) : (
+                    "Forge Realm"
+                  )}
                 </Button>
               </div>
             </div>

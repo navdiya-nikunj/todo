@@ -1,5 +1,5 @@
 // API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api"
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api"
 
 // API Client with error handling and auth
 class ApiClient {
@@ -25,7 +25,15 @@ class ApiClient {
     this.token = null
     if (typeof window !== "undefined") {
       localStorage.removeItem("auth_token")
+      localStorage.removeItem("refresh_token")
     }
+  }
+
+  getStoredToken(): string | null {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("auth_token")
+    }
+    return null
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -42,6 +50,54 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
+
+      // Handle token expiration
+      if (response.status === 401 && this.token && endpoint !== "/auth/refresh") {
+        const refreshToken = localStorage.getItem("refresh_token")
+        if (refreshToken) {
+          try {
+            // Try to refresh the token
+            const refreshResponse = await fetch(`${this.baseURL}/auth/refresh`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ refreshToken }),
+            })
+
+            if (refreshResponse.ok) {
+              const refreshData = await refreshResponse.json()
+              this.setToken(refreshData.data.accessToken)
+              localStorage.setItem("refresh_token", refreshData.data.refreshToken)
+
+              // Retry the original request with new token
+              const retryConfig = {
+                ...config,
+                headers: {
+                  ...config.headers,
+                  Authorization: `Bearer ${refreshData.data.accessToken}`,
+                },
+              }
+              const retryResponse = await fetch(url, retryConfig)
+              
+              if (!retryResponse.ok) {
+                const errorData = await retryResponse.json().catch(() => ({}))
+                throw new ApiError(errorData.message || `HTTP ${retryResponse.status}`, retryResponse.status, errorData)
+              }
+              
+              return await retryResponse.json()
+            }
+          } catch (refreshError) {
+            // Refresh failed, clear tokens
+            this.clearToken()
+            throw new ApiError("Session expired", 401, refreshError)
+          }
+        } else {
+          // No refresh token, clear session
+          this.clearToken()
+          throw new ApiError("Session expired", 401, {})
+        }
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))

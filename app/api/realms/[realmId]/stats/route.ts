@@ -5,14 +5,14 @@ import Task from "@/lib/db/models/Task"
 import XPHistory from "@/lib/db/models/XPHistory"
 import { withAuth } from "@/lib/auth/middleware"
 
-export const GET = withAuth(async (request, { params }) => {
+export const GET = withAuth(async (request, { params }: { params: { realmId: string } }) => {
   try {
     await connectDB()
 
-    const { id } = params
+    const { realmId } = params
 
     const realm = await Realm.findOne({
-      _id: id,
+      _id: realmId,
       userId: request.user.userId,
     })
 
@@ -43,7 +43,7 @@ export const GET = withAuth(async (request, { params }) => {
           },
         },
       ]),
-      Task.find({ realmId: id })
+      Task.find({ realmId: realmId })
         .sort({ updatedAt: -1 })
         .limit(5)
         .select("title status difficulty xpReward completedAt"),
@@ -53,7 +53,7 @@ export const GET = withAuth(async (request, { params }) => {
       })
         .populate({
           path: "taskId",
-          match: { realmId: id },
+          match: { realmId: realmId },
           select: "title difficulty",
         })
         .sort({ createdAt: -1 })
@@ -102,7 +102,7 @@ export const GET = withAuth(async (request, { params }) => {
 
     // Calculate average completion time
     const completedTasks = await Task.find({
-      realmId: id,
+      realmId: realmId,
       status: "completed",
       completedAt: { $exists: true },
     }).select("createdAt completedAt")

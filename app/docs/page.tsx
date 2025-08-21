@@ -1,18 +1,16 @@
 "use client"
 
-import { NavigationHeader } from "@/components/realm-quest/navigation-header"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Sword, Shield, Zap, Trophy, Star, Target, Users, Crown } from "lucide-react"
 
 export default function DocsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen ">
       {/* Animated background */}
       <div className="fixed inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
       <div className="relative z-10">
-        <NavigationHeader title="Hunter's Guide" subtitle="Master the art of RealmQuest" showBack={true} />
 
         <div className="container mx-auto px-4 py-8 max-w-4xl">
           {/* Hero Section */}

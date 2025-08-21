@@ -1,8 +1,8 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Sword, Shield, UserIcon, Star, Zap, Flame, CheckCircle } from "lucide-react"
+import { Sword, Shield, UserIcon, Star, Zap, Flame, CheckCircle, AlertTriangle } from "lucide-react"
 
 // Updated imports to use organized structure
 import { UserProfileCard } from "@/components/realm-quest/user-profile-card"
@@ -11,47 +11,169 @@ import { StatsCard } from "@/components/realm-quest/stats-card"
 import { NavigationHeader } from "@/components/realm-quest/navigation-header"
 import { DailyQuestCard } from "@/components/realm-quest/daily-quest-card"
 import { CreateDailyQuestModal } from "@/components/realm-quest/create-daily-quest-modal"
-import { generateDailyQuests, createCustomDailyQuest, updateCustomQuestProgress } from "@/lib/utils/realm-quest"
-import type { DailyQuest, CustomDailyQuest, CreateCustomQuestData } from "@/lib/types/realm-quest"
-import { mockUser, mockRealms } from "@/lib/data/mock-data"
-import { formatSuccessRate } from "@/lib/utils/realm-quest"
+import { EditDailyQuestModal } from "@/components/realm-quest/edit-daily-quest-modal"
+import { LoadingSpinner } from "@/components/realm-quest/loading-spinner"
+import { useAuth } from "@/lib/contexts/auth-context"
+import { realmService, userService, dailyQuestService } from "@/lib/api/services"
+import type { DailyQuest, CustomDailyQuest, CreateCustomQuestData, Realm } from "@/lib/types/realm-quest"
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [user, setUser] = useState(mockUser)
-  const [realms] = useState(mockRealms)
-  const [dailyQuests, setDailyQuests] = useState<(DailyQuest | CustomDailyQuest)[]>(() => generateDailyQuests())
+  const { state: authState, logout } = useAuth()
+  const [realms, setRealms] = useState<Realm[]>([])
+  const [userStats, setUserStats] = useState<any>(null)
+  const [dailyQuests, setDailyQuests] = useState<(DailyQuest | CustomDailyQuest)[]>([])
   const [showQuestReward, setShowQuestReward] = useState<{ xp: number; title: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleClaimQuest = (questId: string) => {
-    const quest = dailyQuests.find((q) => q.id === questId)
-    if (!quest || !quest.completed) return
+  // Load dashboard data
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      if (!authState.isAuthenticated) {
+        router.push("/login")
+        return
+      }
 
-    // Award XP to user
-    setUser((prev) => ({ ...prev, xp: prev.xp + quest.xpReward }))
+      try {
+        setLoading(true)
+        setError(null)
 
-    // Show reward animation
-    setShowQuestReward({ xp: quest.xpReward, title: quest.title })
-    setTimeout(() => setShowQuestReward(null), 3000)
+        // Load realms, user stats, and daily quests in parallel
+        const [realmsResponse, statsResponse, questsResponse] = await Promise.all([
+          realmService.getRealms(1, 10),
+          userService.getUserStats(),
+          dailyQuestService.getDailyQuests(),
+        ])
 
-    // Remove claimed quest (in real app, this would be handled by backend)
-    setDailyQuests((prev) => prev.filter((q) => q.id !== questId))
+        setRealms(realmsResponse.data)
+        setUserStats(statsResponse.data)
+        setDailyQuests(questsResponse.data)
+      } catch (err: any) {
+        setError(err.message || "Failed to load dashboard data")
+        console.error("Dashboard error:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboardData()
+  }, [authState.isAuthenticated, router])
+
+  const handleLogout = async () => {
+    try {
+      await logout()
+      router.push("/login")
+    } catch (error) {
+      console.error("Logout error:", error)
+      // Force redirect even if logout fails
+      router.push("/login")
+    }
   }
 
-  const handleCreateCustomQuest = (questData: CreateCustomQuestData) => {
-    const newQuest = createCustomDailyQuest(questData)
-    setDailyQuests((prev) => [...prev, newQuest])
+  const handleClaimQuest = async (questId: string) => {
+    try {
+      const response = await dailyQuestService.claimQuestReward(questId)
+      
+      // Show reward animation
+      setShowQuestReward({ 
+        xp: response.data.xpGained, 
+        title: dailyQuests.find(q => q.id === questId)?.title || "Quest Completed" 
+      })
+      setTimeout(() => setShowQuestReward(null), 3000)
+
+      // Remove claimed quest from the list
+      setDailyQuests((prev) => prev.filter((q) => q.id !== questId))
+    } catch (err: any) {
+      setError(err.message || "Failed to claim quest reward")
+      console.error("Claim quest error:", err)
+    }
   }
 
-  const handleUpdateQuestProgress = (questId: string) => {
-    setDailyQuests((prev) =>
-      prev.map((quest) => {
-        if (quest.id === questId && "isCustom" in quest && quest.isCustom) {
-          return updateCustomQuestProgress(quest as CustomDailyQuest)
-        }
-        return quest
-      }),
+  const handleCreateCustomQuest = async (questData: CreateCustomQuestData) => {
+    try {
+      const response = await dailyQuestService.createCustomQuest({
+        title: questData.title,
+        description: questData.description,
+        target: questData.target,
+        xpReward: questData.xpReward,
+      })
+      
+      // Add new quest to the list
+      setDailyQuests((prev) => [...prev, response.data])
+    } catch (err: any) {
+      setError(err.message || "Failed to create custom quest")
+      console.error("Create custom quest error:", err)
+    }
+  }
+
+  const handleUpdateQuestProgress = async (questId: string, increment = 1) => {
+    try {
+      const response = await dailyQuestService.updateQuestProgress(questId, increment)
+      
+      // Update quest in the list
+      setDailyQuests((prev) =>
+        prev.map((quest) => (quest.id === questId ? response.data : quest))
+      )
+    } catch (err: any) {
+      setError(err.message || "Failed to update quest progress")
+      console.error("Update quest progress error:", err)
+    }
+  }
+
+  const handleEditQuest = async (questId: string, questData: CreateCustomQuestData) => {
+    try {
+      const response = await dailyQuestService.updateCustomQuest(questId, questData)
+      
+      // Update quest in the list
+      setDailyQuests((prev) =>
+        prev.map((quest) => (quest.id === questId ? response.data : quest))
+      )
+    } catch (err: any) {
+      setError(err.message || "Failed to edit quest")
+      console.error("Edit quest error:", err)
+    }
+  }
+
+  const handleDeleteQuest = async (questId: string) => {
+    try {
+      await dailyQuestService.deleteCustomQuest(questId)
+      
+      // Remove quest from the list
+      setDailyQuests((prev) => prev.filter((quest) => quest.id !== questId))
+    } catch (err: any) {
+      setError(err.message || "Failed to delete quest")
+      console.error("Delete quest error:", err)
+    }
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
     )
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-400" />
+          <h2 className="text-xl font-bold text-realm-silver mb-2">Error Loading Dashboard</h2>
+          <p className="text-realm-silver/70 mb-4">{error}</p>
+          <Button onClick={() => window.location.reload()} className="realm-button text-realm-neon-blue">
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!authState.data) {
+    return null
   }
 
   return (
@@ -87,10 +209,10 @@ export default function DashboardPage() {
       <div className="max-w-6xl mx-auto relative z-10">
         <NavigationHeader
           title="The Realm Gate"
-          subtitle={`Welcome back, ${user.name}. Your adventure continues...`}
+          subtitle={`Welcome back, ${authState.data.username}. Your adventure continues...`}
           rightContent={
             <Button
-              onClick={() => router.push("/login")}
+              onClick={handleLogout}
               variant="outline"
               className="border-realm-crimson/30 text-realm-crimson hover:bg-realm-crimson/10"
             >
@@ -100,7 +222,7 @@ export default function DashboardPage() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <UserProfileCard user={user} />
+          <UserProfileCard user={authState.data} />
 
           <StatsCard title="Quick Actions" icon={<Star className="w-5 h-5 text-yellow-400 animate-pulse" />}>
             <div className="space-y-3">
@@ -132,19 +254,19 @@ export default function DashboardPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-realm-silver/70">Current Level</span>
-                <span className="text-realm-neon-blue font-bold">{user.level}</span>
+                <span className="text-realm-neon-blue font-bold">{authState.data.level}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-realm-silver/70">Total XP</span>
-                <span className="text-realm-neon-blue font-bold">{user.xp}</span>
+                <span className="text-realm-neon-blue font-bold">{authState.data.xp}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-realm-silver/70">Badges Earned</span>
-                <span className="text-yellow-400 font-bold">{user.badges.length}</span>
+                <span className="text-yellow-400 font-bold">{authState.data.badges?.length || 0}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-realm-silver/70">Success Rate</span>
-                <span className="text-green-400 font-bold">{formatSuccessRate(user.stats.tasksCompleted)}%</span>
+                <span className="text-realm-silver/70">Active Realms</span>
+                <span className="text-green-400 font-bold">{realms.length}</span>
               </div>
             </div>
           </StatsCard>
@@ -161,14 +283,16 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {dailyQuests.map((quest) => (
-              <DailyQuestCard
-                key={quest.id}
-                quest={quest}
-                onClaim={handleClaimQuest}
-                onUpdateProgress={handleUpdateQuestProgress}
-              />
-            ))}
+                          {dailyQuests.map((quest) => (
+                <DailyQuestCard
+                  key={quest.id}
+                  quest={quest}
+                  onClaim={handleClaimQuest}
+                  onUpdateProgress={(questId) => handleUpdateQuestProgress(questId, 1)}
+                  onEditQuest={handleEditQuest}
+                  onDeleteQuest={handleDeleteQuest}
+                />
+              ))}
           </div>
 
           {dailyQuests.length === 0 && (

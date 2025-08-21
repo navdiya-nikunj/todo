@@ -11,15 +11,16 @@ interface UserProfileCardProps {
 }
 
 export function UserProfileCard({ user }: UserProfileCardProps) {
+  
   return (
     <Card className="realm-panel realm-glow transition-all duration-500 hover:scale-105">
       <div className="p-6">
         <div className="flex items-center gap-4 mb-6">
           <div className="relative">
             <Avatar className="w-16 h-16 border-2 border-realm-neon-blue/50 realm-glow">
-              <AvatarImage src={user.avatar || "/placeholder.svg"} alt={user.name} />
+              <AvatarImage src={`/avatars/${user.avatar}.png` || "/placeholder.svg"} alt={user.name} />
               <AvatarFallback className="bg-realm-gunmetal text-realm-neon-blue text-xl font-bold">
-                {user.name.charAt(0)}
+                {user?.name?.charAt(0) || "?"}
               </AvatarFallback>
             </Avatar>
             <div className="absolute -top-1 -right-1 w-6 h-6 bg-realm-neon-blue rounded-full flex items-center justify-center">
